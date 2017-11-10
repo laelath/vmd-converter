@@ -60,9 +60,9 @@ const char *getFileExt(const char *filename)
 size_t vertexSize(VmdData *model)
 {
     size_t floats = 3;
-    if (model->vertexMask & VMD_VERTEX_NORMAL_FLAG) floats += 3;
-    if (model->vertexMask & VMD_VERTEX_COLOR_FLAG) floats += 3;
-    if (model->vertexMask & VMD_VERTEX_TEXCOORD_FLAG) floats += 2;
+    if (model->vertexMask & VMD_VERTEX_NORMAL_BIT) floats += 3;
+    if (model->vertexMask & VMD_VERTEX_COLOR_BIT) floats += 3;
+    if (model->vertexMask & VMD_VERTEX_TEXCOORD_BIT) floats += 2;
     return floats * sizeof(float);
 }
 
@@ -177,10 +177,42 @@ void loadObj(VmdData *model, char *data, size_t dataLen)
     tinyobj_materials_free(materials, numMaterials);
 }
 
+void loadVmd(VmdData *model, const char *data, size_t dataLen)
+{
+    model->vertexMask = data[0];
+    size_t offset = 1;
+
+    model->vertexCount = *((uint32_t*) (data + offset));
+    offset += sizeof(uint32_t);
+
+    model->indexCount = *((uint32_t*) (data + offset));
+    offset += sizeof(uint32_t);
+
+    size_t vertSize = vertexSize(model);
+    if (offset + model->vertexCount * vertSize + model->indexCount * sizeof(uint32_t) != dataLen) {
+        fprintf(stderr, "Error prsing vmd file: File size doesn't match that indicated by file metadata\n");
+        exit(4);
+    }
+
+    model->vertices = malloc(model->vertexCount * vertSize);
+    model->indices  = malloc(model->indexCount  * sizeof(uint32_t));
+
+    memcpy(model->vertices, data + offset, model->vertexCount * vertSize);
+    offset += model->vertexCount * vertSize;
+
+    memcpy(model->indices, data + offset, model->indexCount * sizeof(uint32_t));
+}
+
 void saveVmd(const char *filename, VmdData *model)
 {
     // TODO: saving stuff
     FILE *fp = fopen(filename, "wb");
+
+    fwrite(&model->vertexMask, sizeof(char), 1, fp);
+    fwrite(&model->vertexCount, sizeof(uint32_t), 1, fp);
+    fwrite(&model->indexCount, sizeof(uint32_t), 1, fp);
+    fwrite(model->vertices, model->vertexCount, vertexSize(model), fp);
+    fwrite(model->indices, model->indexCount, sizeof(uint32_t), fp);
 
     fclose(fp);
 }
@@ -188,7 +220,7 @@ void saveVmd(const char *filename, VmdData *model)
 int main(int argc, char *argv[])
 {
     if (argc != 2) {
-        printf("Usage: %s \"Model filename\"\n", argv[0]);
+        printf("Usage: %s model\n", argv[0]);
         return 1;
     }
 
@@ -217,7 +249,9 @@ int main(int argc, char *argv[])
     strncpy(vmdName, filename, nameLen - 1);
     strncpy(vmdName + nameLen - 1, ".vmd\0", 5);
 
-    printf("filename: %s, vmdName: %s\n", filename, vmdName);
-
     saveVmd(vmdName, &model);
+
+    // TEMP
+    data = getFileData(vmdName, &dataLen);
+    loadVmd(&model, data, dataLen);
 }
