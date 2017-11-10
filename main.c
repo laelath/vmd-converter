@@ -9,7 +9,8 @@
 #define TINYOBJ_LOADER_C_IMPLEMENTATION
 #include <tinyobj_loader_c.h>
 
-#include "vmd_format.h"
+#define VMD_LOADER_IMPLEMENTATION
+#include "vmd_loader.h"
 
 char *getFileData(const char *filename, size_t *length)
 {
@@ -57,15 +58,6 @@ const char *getFileExt(const char *filename)
     return dot + 1;
 }
 
-size_t vertexSize(VmdData *model)
-{
-    size_t floats = 3;
-    if (model->vertexMask & VMD_VERTEX_NORMAL_BIT) floats += 3;
-    if (model->vertexMask & VMD_VERTEX_COLOR_BIT) floats += 3;
-    if (model->vertexMask & VMD_VERTEX_TEXCOORD_BIT) floats += 2;
-    return floats * sizeof(float);
-}
-
 void loadObj(VmdData *model, char *data, size_t dataLen)
 {
     tinyobj_attrib_t    attrib;
@@ -87,8 +79,8 @@ void loadObj(VmdData *model, char *data, size_t dataLen)
     if (attrib.num_texcoords > 0)
         model->vertexMask |= VMD_VERTEX_TEXCOORD_BIT;
 
-    size_t vertSize = vertexSize(model);
-    size_t vertFloats = vertexSize(model) / sizeof(float);
+    size_t vertSize = vmdVertexSize(model);
+    size_t vertFloats = vmdVertexSize(model) / sizeof(float);
 
     // Initial upper bounds allocation
     model->vertices = malloc(attrib.num_faces * vertSize);
@@ -177,46 +169,6 @@ void loadObj(VmdData *model, char *data, size_t dataLen)
     tinyobj_materials_free(materials, numMaterials);
 }
 
-void loadVmd(VmdData *model, const char *data, size_t dataLen)
-{
-    model->vertexMask = data[0];
-    size_t offset = 1;
-
-    model->vertexCount = *((uint32_t*) (data + offset));
-    offset += sizeof(uint32_t);
-
-    model->indexCount = *((uint32_t*) (data + offset));
-    offset += sizeof(uint32_t);
-
-    size_t vertSize = vertexSize(model);
-    if (offset + model->vertexCount * vertSize + model->indexCount * sizeof(uint32_t) != dataLen) {
-        fprintf(stderr, "Error prsing vmd file: File size doesn't match that indicated by file metadata\n");
-        exit(4);
-    }
-
-    model->vertices = malloc(model->vertexCount * vertSize);
-    model->indices  = malloc(model->indexCount  * sizeof(uint32_t));
-
-    memcpy(model->vertices, data + offset, model->vertexCount * vertSize);
-    offset += model->vertexCount * vertSize;
-
-    memcpy(model->indices, data + offset, model->indexCount * sizeof(uint32_t));
-}
-
-void saveVmd(const char *filename, VmdData *model)
-{
-    // TODO: saving stuff
-    FILE *fp = fopen(filename, "wb");
-
-    fwrite(&model->vertexMask, sizeof(char), 1, fp);
-    fwrite(&model->vertexCount, sizeof(uint32_t), 1, fp);
-    fwrite(&model->indexCount, sizeof(uint32_t), 1, fp);
-    fwrite(model->vertices, model->vertexCount, vertexSize(model), fp);
-    fwrite(model->indices, model->indexCount, sizeof(uint32_t), fp);
-
-    fclose(fp);
-}
-
 int main(int argc, char *argv[])
 {
     if (argc != 2) {
@@ -250,8 +202,4 @@ int main(int argc, char *argv[])
     strncpy(vmdName + nameLen - 1, ".vmd\0", 5);
 
     saveVmd(vmdName, &model);
-
-    // TEMP
-    data = getFileData(vmdName, &dataLen);
-    loadVmd(&model, data, dataLen);
 }
