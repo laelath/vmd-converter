@@ -182,7 +182,9 @@ int main(int argc, char *argv[])
     VmdData model;
 
     const char *fileExt = getFileExt(argv[1]);
-    if (strcmp(fileExt, "obj") == 0)
+    if (strcmp(fileExt, "vmdt") == 0)
+        loadVmdt(&model, data, dataLen);
+    else if (strcmp(fileExt, "obj") == 0)
         loadObj(&model, data, dataLen);
     else {
         printf("Unsupported model format: %s\n", fileExt);
